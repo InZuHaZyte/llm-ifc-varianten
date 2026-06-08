@@ -145,3 +145,35 @@ def register_tools(mcp: Any, model: ModelProvider, logger: logging.Logger) -> No
     def get_available_element_categories() -> list[str]:
         logger.info("Tool called: get_available_element_categories")
         return model().available_categories()
+
+    @mcp.tool()
+    def get_wall_statistics() -> dict[str, Any]:
+        """Geeft aantal wanden en totale wandoppervlakte (m²), uitgesplitst per
+        verdieping én per wandtype. Gebruik dit voor vragen over aantallen,
+        oppervlakten of verdeling van wanden."""
+        logger.info("Tool called: get_wall_statistics")
+        return model().wall_statistics()
+
+    @mcp.tool()
+    def get_door_statistics() -> dict[str, Any]:
+        """Geeft aantal deuren en totale deuropppervlakte (m²), uitgesplitst per
+        verdieping én per deurtype. Gebruik dit voor vragen over aantallen,
+        oppervlakten of verdeling van deuren."""
+        logger.info("Tool called: get_door_statistics")
+        return model().door_statistics()
+
+    @mcp.tool()
+    def get_window_statistics() -> dict[str, Any]:
+        """Geeft aantal ramen en totale raamoppervlakte (m²), uitgesplitst per
+        verdieping én per raamtype. Gebruik dit voor vragen over aantallen,
+        oppervlakten of verdeling van ramen."""
+        logger.info("Tool called: get_window_statistics")
+        return model().window_statistics()
+
+    @mcp.tool()
+    def get_space_statistics() -> dict[str, Any]:
+        """Geeft aantal ruimtes met bruto vloeroppervlakte (BVO) en netto
+        vloeroppervlakte (NVO) in m², uitgesplitst per verdieping. Gebruik dit
+        voor vragen over vloeroppervlak, BVO, NVO of ruimteaantallen."""
+        logger.info("Tool called: get_space_statistics")
+        return model().space_statistics()

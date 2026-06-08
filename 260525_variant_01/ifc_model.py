@@ -143,6 +143,133 @@ class IfcModel:
     def available_categories(self) -> list[str]:
         return list(ENTITY_CLASSES.keys())
 
+    # ------------------------------------------------------------------
+    # Quantity helpers
+    # ------------------------------------------------------------------
+
+    def _get_quantity(self, element: Any, *lookup_paths: tuple[str, str]) -> float | None:
+        """Zoek een numerieke hoeveelheid op in de quantity sets van een element.
+        lookup_paths: tuples van (qto_naam, property_naam).
+        """
+        try:
+            psets = self._element_util.get_psets(element, qtos_only=True)
+            for qto_name, prop_name in lookup_paths:
+                if qto_name in psets and prop_name in psets[qto_name]:
+                    val = psets[qto_name][prop_name]
+                    if val is not None:
+                        return float(val)
+        except Exception:
+            pass
+        return None
+
+    def _element_statistics(
+        self,
+        entity_type: str,
+        area_paths: list[tuple[str, str]],
+    ) -> dict[str, Any]:
+        """Genereer statistieken (aantal + oppervlakte) per verdieping en per type."""
+        elements = self.elements(entity_type)
+        total_area = 0.0
+        any_area = False
+        per_storey: dict[str, dict] = {}
+        per_type: dict[str, dict] = {}
+
+        for el in elements:
+            storey_name = self.storey(el) or "Onbekende bouwlaag"
+            type_label = self.type_name(el) or "Onbekend type"
+            area = self._get_quantity(el, *area_paths)
+
+            if area is not None:
+                any_area = True
+                total_area += area
+            area_val = round(area, 2) if area is not None else 0.0
+
+            if storey_name not in per_storey:
+                per_storey[storey_name] = {"aantal": 0, "oppervlakte_m2": 0.0}
+            per_storey[storey_name]["aantal"] += 1
+            per_storey[storey_name]["oppervlakte_m2"] += area_val
+
+            if type_label not in per_type:
+                per_type[type_label] = {"aantal": 0, "oppervlakte_m2": 0.0}
+            per_type[type_label]["aantal"] += 1
+            per_type[type_label]["oppervlakte_m2"] += area_val
+
+        for v in per_storey.values():
+            v["oppervlakte_m2"] = round(v["oppervlakte_m2"], 2)
+        for v in per_type.values():
+            v["oppervlakte_m2"] = round(v["oppervlakte_m2"], 2)
+
+        return {
+            "eenheid": "m2",
+            "heeft_oppervlaktedata": any_area,
+            "totaal": {
+                "aantal": len(elements),
+                "oppervlakte_m2": round(total_area, 2),
+            },
+            "per_verdieping": dict(sorted(per_storey.items())),
+            "per_type": dict(sorted(per_type.items())),
+        }
+
+    def wall_statistics(self) -> dict[str, Any]:
+        return self._element_statistics("Wall", [
+            ("Qto_WallBaseQuantities", "NetSideArea"),
+            ("Qto_WallBaseQuantities", "GrossSideArea"),
+            ("BaseQuantities", "NetSideArea"),
+        ])
+
+    def door_statistics(self) -> dict[str, Any]:
+        return self._element_statistics("Door", [
+            ("Qto_DoorBaseQuantities", "Area"),
+            ("BaseQuantities", "Area"),
+        ])
+
+    def window_statistics(self) -> dict[str, Any]:
+        return self._element_statistics("Window", [
+            ("Qto_WindowBaseQuantities", "Area"),
+            ("BaseQuantities", "Area"),
+        ])
+
+    def space_statistics(self) -> dict[str, Any]:
+        """Ruimtestatistieken met zowel BVO (bruto) als NVO (netto) per verdieping."""
+        elements = self.elements("Space")
+        total_bvo = 0.0
+        total_nvo = 0.0
+        per_storey: dict[str, dict] = {}
+
+        for el in elements:
+            storey_name = self.storey(el) or "Onbekende bouwlaag"
+            bvo = self._get_quantity(el,
+                ("Qto_SpaceBaseQuantities", "GrossFloorArea"),
+                ("BaseQuantities", "GrossFloorArea"),
+            ) or 0.0
+            nvo = self._get_quantity(el,
+                ("Qto_SpaceBaseQuantities", "NetFloorArea"),
+                ("BaseQuantities", "NetFloorArea"),
+            ) or 0.0
+
+            total_bvo += bvo
+            total_nvo += nvo
+
+            if storey_name not in per_storey:
+                per_storey[storey_name] = {"aantal": 0, "bvo_m2": 0.0, "nvo_m2": 0.0}
+            per_storey[storey_name]["aantal"] += 1
+            per_storey[storey_name]["bvo_m2"] += bvo
+            per_storey[storey_name]["nvo_m2"] += nvo
+
+        for v in per_storey.values():
+            v["bvo_m2"] = round(v["bvo_m2"], 2)
+            v["nvo_m2"] = round(v["nvo_m2"], 2)
+
+        return {
+            "eenheid": "m2",
+            "totaal": {
+                "aantal": len(elements),
+                "bvo_m2": round(total_bvo, 2),
+                "nvo_m2": round(total_nvo, 2),
+            },
+            "per_verdieping": dict(sorted(per_storey.items())),
+        }
+
     def spaces_bounded_by_walls(self) -> list[dict[str, Any]]:
         rows = []
         for rel in self.model.by_type("IfcRelSpaceBoundary"):
