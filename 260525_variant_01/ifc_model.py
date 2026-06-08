@@ -270,6 +270,139 @@ class IfcModel:
             "per_verdieping": dict(sorted(per_storey.items())),
         }
 
+    # ------------------------------------------------------------------
+    # Overview methods (actieve tools)
+    # ------------------------------------------------------------------
+
+    def _storey_object(self, element: Any) -> Any | None:
+        """Geeft het IfcBuildingStorey-object terug waar het element in zit."""
+        try:
+            container = self._element_util.get_container(element)
+            while container is not None:
+                if container.is_a("IfcBuildingStorey"):
+                    return container
+                container = self._element_util.get_container(container)
+        except Exception:
+            pass
+        return None
+
+    def _storey_element_overview(
+        self,
+        entity_type: str,
+        area_paths: list[tuple[str, str]],
+    ) -> dict[str, Any]:
+        """Genereer per verdieping: totaal aantal + m², uitgesplitst per type."""
+        storey_data: dict[str, dict] = {}
+
+        for el in self.elements(entity_type):
+            storey_obj = self._storey_object(el)
+            s_name = self.name(storey_obj) if storey_obj else "Onbekende bouwlaag"
+            elevation = float(getattr(storey_obj, "Elevation", 0) or 0) if storey_obj else 0.0
+            area = self._get_quantity(el, *area_paths)
+            area_val = round(area, 2) if area is not None else 0.0
+            type_label = self.type_name(el) or "Onbekend type"
+
+            if s_name not in storey_data:
+                storey_data[s_name] = {
+                    "storey_name": s_name,
+                    "elevation": elevation,
+                    "count": 0,
+                    "area_m2": 0.0,
+                    "by_type": {},
+                }
+            storey_data[s_name]["count"] += 1
+            storey_data[s_name]["area_m2"] += area_val
+
+            bt = storey_data[s_name]["by_type"]
+            if type_label not in bt:
+                bt[type_label] = {"type": type_label, "count": 0, "area_m2": 0.0}
+            bt[type_label]["count"] += 1
+            bt[type_label]["area_m2"] += area_val
+
+        storeys = sorted(storey_data.values(), key=lambda x: x["elevation"])
+        for s in storeys:
+            s["area_m2"] = round(s["area_m2"], 2)
+            s["by_type"] = sorted(
+                ({"type": t["type"], "count": t["count"], "area_m2": round(t["area_m2"], 2)}
+                 for t in s["by_type"].values()),
+                key=lambda x: x["count"],
+                reverse=True,
+            )
+
+        return {"eenheid": "m2", "storeys": storeys}
+
+    def project_overview(self) -> dict[str, Any]:
+        projects = self.model.by_type("IfcProject")
+        sites = self.model.by_type("IfcSite")
+        buildings = self.model.by_type("IfcBuilding")
+        storey_objs = self.elements("Storey")
+        storey_names = sorted(self.name(s) for s in storey_objs)
+        return {
+            "project": self.name(projects[0]) if projects else None,
+            "site": self.name(sites[0]) if sites else None,
+            "building": self.name(buildings[0]) if buildings else None,
+            "ifc_schema": getattr(self.model, "schema", None),
+            "totals": {key: self.count(key) for key in ("Wall", "Door", "Window", "Space", "Storey")},
+            "storey_names": storey_names,
+        }
+
+    def wall_overview(self) -> dict[str, Any]:
+        return self._storey_element_overview("Wall", [
+            ("Qto_WallBaseQuantities", "NetSideArea"),
+            ("Qto_WallBaseQuantities", "GrossSideArea"),
+            ("BaseQuantities", "NetSideArea"),
+        ])
+
+    def door_overview(self) -> dict[str, Any]:
+        return self._storey_element_overview("Door", [
+            ("Qto_DoorBaseQuantities", "Area"),
+            ("BaseQuantities", "Area"),
+        ])
+
+    def window_overview(self) -> dict[str, Any]:
+        return self._storey_element_overview("Window", [
+            ("Qto_WindowBaseQuantities", "Area"),
+            ("BaseQuantities", "Area"),
+        ])
+
+    def space_overview(self) -> dict[str, Any]:
+        storey_data: dict[str, dict] = {}
+
+        for el in self.elements("Space"):
+            storey_obj = self._storey_object(el)
+            s_name = self.name(storey_obj) if storey_obj else "Onbekende bouwlaag"
+            elevation = float(getattr(storey_obj, "Elevation", 0) or 0) if storey_obj else 0.0
+            bvo = self._get_quantity(el,
+                ("Qto_SpaceBaseQuantities", "GrossFloorArea"),
+                ("BaseQuantities", "GrossFloorArea"),
+            ) or 0.0
+            nvo = self._get_quantity(el,
+                ("Qto_SpaceBaseQuantities", "NetFloorArea"),
+                ("BaseQuantities", "NetFloorArea"),
+            ) or 0.0
+
+            if s_name not in storey_data:
+                storey_data[s_name] = {
+                    "storey_name": s_name,
+                    "elevation": elevation,
+                    "count": 0,
+                    "bvo_m2": 0.0,
+                    "nvo_m2": 0.0,
+                    "spaces": [],
+                }
+            storey_data[s_name]["count"] += 1
+            storey_data[s_name]["bvo_m2"] += bvo
+            storey_data[s_name]["nvo_m2"] += nvo
+            storey_data[s_name]["spaces"].append(self.name(el))
+
+        storeys = sorted(storey_data.values(), key=lambda x: x["elevation"])
+        for s in storeys:
+            s["bvo_m2"] = round(s["bvo_m2"], 2)
+            s["nvo_m2"] = round(s["nvo_m2"], 2)
+            s["spaces"] = sorted(s["spaces"])
+
+        return {"eenheid": "m2", "storeys": storeys}
+
     def spaces_bounded_by_walls(self) -> list[dict[str, Any]]:
         rows = []
         for rel in self.model.by_type("IfcRelSpaceBoundary"):
