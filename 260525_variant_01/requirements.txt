@@ -1,0 +1,5 @@
+fastmcp>=2.0.0
+ifcopenshell>=0.8.0
+langchain>=1.0.0
+langchain-ollama>=1.0.0
+langchain-mcp-adapters>=0.1.0
