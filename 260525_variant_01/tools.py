@@ -218,3 +218,55 @@ def register_tools(mcp: Any, model: ModelProvider, logger: logging.Logger) -> No
         vloeroppervlak, BVO, NVO of welke ruimtes er op een verdieping zijn."""
         logger.info("Tool called: get_space_overview")
         return model().space_overview()
+
+    @mcp.tool()
+    def get_slab_overview() -> dict[str, Any]:
+        """Geeft per verdieping (gesorteerd op hoogte) het totaal aantal vloerplaten
+        (IfcSlab) en de totale oppervlakte in m², plus een uitsplitsing per type.
+        Gebruik dit voor vragen over vloeren, vloerplaten, dakplaten of vloeroppervlakten."""
+        logger.info("Tool called: get_slab_overview")
+        return model().slab_overview()
+
+    @mcp.tool()
+    def get_roof_overview() -> dict[str, Any]:
+        """Geeft per verdieping (gesorteerd op hoogte) het totaal aantal daken
+        (IfcRoof) en het dakoppervlak in m², plus een uitsplitsing per daktype.
+        Gebruik dit voor vragen over daken, dakvormen of dakoppervlakten."""
+        logger.info("Tool called: get_roof_overview")
+        return model().roof_overview()
+
+    @mcp.tool()
+    def get_stair_overview() -> dict[str, Any]:
+        """Geeft per verdieping (gesorteerd op hoogte) het totaal aantal trappen
+        (IfcStair) en een uitsplitsing per traptype. Gebruik dit voor vragen
+        over trappen, trappenhuizen of verdeling van trappen per verdieping."""
+        logger.info("Tool called: get_stair_overview")
+        return model().stair_overview()
+
+    @mcp.tool()
+    def get_covering_overview() -> dict[str, Any]:
+        """Geeft per verdieping (gesorteerd op hoogte) het totaal aantal
+        afwerkingslagen (IfcCovering, o.a. vloer- en plafondafwerking) en
+        de oppervlakte in m², plus een uitsplitsing per type. Gebruik dit
+        voor vragen over afwerking, vloerbedekking, plafondafwerking of
+        wandbekleding."""
+        logger.info("Tool called: get_covering_overview")
+        return model().covering_overview()
+
+    @mcp.tool()
+    def get_column_overview() -> dict[str, Any]:
+        """Geeft per verdieping (gesorteerd op hoogte) het totaal aantal kolommen
+        (IfcColumn) en het bruto volume in m³, plus een uitsplitsing per kolomtype.
+        Gebruik dit voor vragen over kolommen, dragende kolommen of
+        constructieve elementen."""
+        logger.info("Tool called: get_column_overview")
+        return model().column_overview()
+
+    @mcp.tool()
+    def get_beam_overview() -> dict[str, Any]:
+        """Geeft per verdieping (gesorteerd op hoogte) het totaal aantal balken
+        (IfcBeam) en het bruto volume in m³, plus een uitsplitsing per balktype.
+        Gebruik dit voor vragen over balken, liggers, dragende balken of
+        constructieve elementen."""
+        logger.info("Tool called: get_beam_overview")
+        return model().beam_overview()

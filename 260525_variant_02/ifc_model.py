@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 
 
+BOOLEAN_FILTER_PROPERTIES = ["LoadBearing", "IsExternal"]
+
 ENTITY_CLASSES = {
     "Wall": ("IfcWall", "IfcWallStandardCase"),
     "Window": ("IfcWindow",),
@@ -231,6 +233,8 @@ class IfcModel:
         if not filters:
             return True
         for key, expected in filters.items():
+            if isinstance(expected, list) and len(expected) == 1:
+                expected = expected[0]
             actual = self.property_value(element, key)
             if isinstance(expected, bool):
                 if _boolish(actual) != expected:
@@ -508,6 +512,209 @@ class IfcModel:
                 continue
             seen[element.id()] = element
         return [self.item(element) for element in seen.values()]
+
+    def _relations_for_entity(self, entity_type: str) -> list[str]:
+        classes = self.entity_classes(entity_type)
+        found: set[str] = set()
+        sample = []
+        for class_name in classes:
+            sample.extend(list(self.model.by_type(class_name))[:5])
+        for element in sample:
+            try:
+                for inverse in self.model.get_inverse(element):
+                    if inverse.is_a("IfcRelContainedInSpatialStructure"):
+                        found.add("CONTAINS")
+                    elif inverse.is_a("IfcRelSpaceBoundary"):
+                        found.add("BOUNDS_SPACE")
+                    elif inverse.is_a("IfcRelFillsElement"):
+                        found.add("FILLS_OPENING")
+                    elif inverse.is_a("IfcRelVoidsElement"):
+                        found.add("HOSTS_OPENING")
+            except Exception:
+                pass
+        return sorted(found)
+
+    def describe_entity_type(self, entity_type: str) -> dict[str, Any]:
+        elements = self.elements(entity_type)
+        if not elements:
+            return {"entity_type": entity_type, "count": 0, "message": "Geen elementen gevonden"}
+
+        all_props: set[str] = set()
+        all_psets: dict[str, set[str]] = defaultdict(set)
+        sample = elements[: min(50, len(elements))]
+
+        for element in sample:
+            props = self.flat_properties(element)
+            all_props.update(k for k in props if not isinstance(props[k], dict))
+            for pset_name, pset_props in self.property_sets(element).items():
+                if isinstance(pset_props, dict):
+                    all_psets[pset_name].update(pset_props.keys())
+
+        common_values: dict[str, list[Any]] = {}
+        for prop in ["type_name", "storey", "name"]:
+            vals = self.available_values(entity_type, prop)
+            if vals:
+                common_values[prop] = vals[:10]
+
+        return {
+            "entity_type": entity_type,
+            "count": len(elements),
+            "ifc_classes": sorted({e.is_a() for e in elements}),
+            "available_properties": sorted(all_props),
+            "property_sets": {name: sorted(props) for name, props in sorted(all_psets.items())},
+            "common_values": common_values,
+            "available_relations": self._relations_for_entity(entity_type),
+            "filter_fields": sorted(all_props - {"id"}),
+        }
+
+    def aggregate_elements(
+        self,
+        entity_type: str,
+        operation: str,
+        property_name: str | None = None,
+        storey: str | None = None,
+        type_name: str | None = None,
+        property_filters: dict[str, Any] | None = None,
+        group_by: str | list[str] | None = None,
+    ) -> dict[str, Any]:
+        operation_key = operation.strip().lower()
+        if operation_key not in {"count", "sum", "average", "min", "max"}:
+            raise ValueError(f"Onbekende operatie '{operation}'. Gebruik: count, sum, average, min, max")
+        if operation_key != "count" and not property_name:
+            raise ValueError(f"property_name is vereist voor operatie '{operation}'")
+
+        matching = []
+        for element in self.elements(entity_type):
+            if not self.matches_storey(element, storey):
+                continue
+            if type_name and _norm(self.type_name(element)) != _norm(type_name):
+                continue
+            if not self.matches_filters(element, property_filters):
+                continue
+            matching.append(element)
+
+        # Detect boolean properties that were not filtered but have mixed values
+        filtered_keys = {_property_key(k) for k in (property_filters or {})}
+        filter_warnings: list[str] = []
+        for prop in BOOLEAN_FILTER_PROPERTIES:
+            if _property_key(prop) in filtered_keys:
+                continue
+            true_count = sum(1 for e in matching if _boolish(self.property_value(e, prop) or False))
+            false_count = len(matching) - true_count
+            if true_count > 0 and false_count > 0:
+                filter_warnings.append(
+                    f"{prop} is niet gefilterd: {true_count} elementen hebben {prop}=true, "
+                    f"{false_count} hebben {prop}=false. "
+                    f"Voeg {prop}=true of {prop}=false toe aan filters als je alleen die subset wilt."
+                )
+
+        prop_key = PROPERTY_ALIASES.get(property_name, property_name) if property_name else None
+
+        # Normaliseer group_by naar een lijst van resolved keys
+        if isinstance(group_by, list):
+            group_keys = [PROPERTY_ALIASES.get(g, g) for g in group_by]
+        elif group_by:
+            group_keys = [PROPERTY_ALIASES.get(group_by, group_by)]
+        else:
+            group_keys = []
+
+        def _compute(values: list[float]) -> float | None:
+            if not values:
+                return None
+            if operation_key == "count":
+                return float(len(values))
+            if operation_key == "sum":
+                return sum(values)
+            if operation_key == "average":
+                return sum(values) / len(values)
+            if operation_key == "min":
+                return min(values)
+            return max(values)
+
+        if not group_keys:
+            if operation_key == "count":
+                result: dict[str, Any] = {"entity_type": entity_type, "operation": "count", "result": len(matching)}
+                if filter_warnings:
+                    result["filter_warnings"] = filter_warnings
+                return result
+            values: list[float] = []
+            skipped = 0
+            for element in matching:
+                raw = self.property_value(element, prop_key)
+                try:
+                    values.append(float(raw))
+                except (TypeError, ValueError):
+                    skipped += 1
+            result = {
+                "entity_type": entity_type,
+                "operation": operation_key,
+                "property_name": prop_key,
+                "result": _compute(values),
+                "counted_elements": len(values),
+                "skipped_elements": skipped,
+                "total_matching": len(matching),
+            }
+            if filter_warnings:
+                result["filter_warnings"] = filter_warnings
+            return result
+
+        groups: dict[str, list[float]] = defaultdict(list)
+        skipped = 0
+        for element in matching:
+            parts = [str(self.property_value(element, gk) or "Onbekend") for gk in group_keys]
+            label = " / ".join(parts)
+            if operation_key == "count":
+                groups[label].append(1.0)
+            else:
+                raw = self.property_value(element, prop_key)
+                try:
+                    groups[label].append(float(raw))
+                except (TypeError, ValueError):
+                    skipped += 1
+
+        computed_groups = {label: _compute(vals) for label, vals in sorted(groups.items())}
+        total = sum(v for v in computed_groups.values() if v is not None)
+        grouped_result: dict[str, Any] = {
+            "entity_type": entity_type,
+            "operation": operation_key,
+            "property_name": prop_key,
+            "group_by": group_by,
+            "group_count": len(computed_groups),
+            "total": total,
+            "groups": computed_groups,
+            "skipped_elements": skipped,
+            "_instruction": f"Toon ALLE {len(computed_groups)} groepen in je antwoord. Totaal = {total}.",
+        }
+        if filter_warnings:
+            grouped_result["filter_warnings"] = filter_warnings
+        return grouped_result
+
+    def explain_model_structure(self) -> dict[str, Any]:
+        structure: dict[str, Any] = {}
+        for entity_type in sorted(ENTITY_CLASSES):
+            elements = self.elements(entity_type)
+            if not elements:
+                continue
+            pset_names: set[str] = set()
+            prop_names: set[str] = set()
+            for element in elements[: min(20, len(elements))]:
+                psets = self.property_sets(element)
+                pset_names.update(psets.keys())
+                for pset_props in psets.values():
+                    if isinstance(pset_props, dict):
+                        prop_names.update(pset_props.keys())
+            structure[entity_type] = {
+                "count": len(elements),
+                "ifc_classes": sorted({e.is_a() for e in elements}),
+                "property_sets": sorted(pset_names),
+                "common_properties": sorted(prop_names)[:20],
+                "available_relations": self._relations_for_entity(entity_type),
+            }
+        return {
+            "model": str(self.path),
+            "entity_types": structure,
+            "total_elements": sum(v["count"] for v in structure.values()),
+        }
 
     def search(self, query: str, entity_types: list[str] | None = None, properties: list[str] | None = None, limit: int = 25) -> list[dict[str, Any]]:
         needles = [_norm(part) for part in query.split() if part.strip()]

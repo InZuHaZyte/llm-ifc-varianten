@@ -85,6 +85,12 @@ python app.py
 
 Je ziet welk sessie-logbestand wordt aangemaakt. Typ daarna gewoon je vraag en druk op Enter. Typ `exit` om te stoppen.
 
+**Alternatief — webinterface (Streamlit):**
+
+```powershell
+streamlit run streamlit_app.py
+```
+
 **Voorbeeld:**
 ```
 Vraag: Welke ruimtes zijn er op de begane grond?

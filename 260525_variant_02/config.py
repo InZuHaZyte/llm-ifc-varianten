@@ -8,7 +8,7 @@ import os
 
 BASE_DIR = Path(__file__).resolve().parent
 LOG_DIR = BASE_DIR / "logs"
-DEFAULT_MODEL = "llama3.1"
+DEFAULT_MODEL = "mistral-small"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 
 

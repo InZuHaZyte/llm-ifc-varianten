@@ -44,7 +44,7 @@ class AgentResult:
 class GraphAgent:
     def __init__(self, config: AppConfig, neo4j_client: Neo4jClient):
         self._cfg = config
-        self._llm = get_llm(config.ollama)
+        self._llm = get_llm(config)
         self._client = neo4j_client
         self._generator = CypherGenerator(self._llm, neo4j_client)
         self._retriever = GraphRetriever(neo4j_client)

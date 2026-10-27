@@ -3,5 +3,7 @@ neo4j>=5.0
 langchain>=0.2.0
 langchain-community>=0.2.0
 langchain-ollama>=0.1.0
+langchain-openai>=0.1.0
 python-dotenv>=1.0.0
 rich>=13.0.0
+streamlit>=1.32.0

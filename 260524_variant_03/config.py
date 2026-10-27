@@ -19,6 +19,12 @@ class OllamaConfig:
 
 
 @dataclass
+class OpenAIConfig:
+    api_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
+    model: str = field(default_factory=lambda: os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+
+
+@dataclass
 class LogConfig:
     file: str = field(default_factory=lambda: os.getenv("LOG_FILE", "graphrag.log"))
     level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
@@ -28,6 +34,7 @@ class LogConfig:
 class AppConfig:
     neo4j: Neo4jConfig = field(default_factory=Neo4jConfig)
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
+    openai: OpenAIConfig = field(default_factory=OpenAIConfig)
     log: LogConfig = field(default_factory=LogConfig)
 
 

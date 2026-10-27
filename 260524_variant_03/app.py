@@ -52,9 +52,12 @@ def cmd_load(args, cfg, client: Neo4jClient):
     table.add_column("Type", style="cyan")
     table.add_column("Aantal", style="green", justify="right")
     for label, nodes in [
-        ("Project", data.projects), ("Building", data.buildings),
+        ("Project", data.projects), ("Site", data.sites), ("Building", data.buildings),
         ("Storey", data.storeys), ("Space", data.spaces),
         ("Wall", data.walls), ("Door", data.doors), ("Window", data.windows),
+        ("Slab", data.slabs), ("Roof", data.roofs), ("Stair", data.stairs),
+        ("Covering", data.coverings), ("Column", data.columns), ("Beam", data.beams),
+        ("Railing", data.railings), ("Member", data.members),
     ]:
         table.add_row(label, str(len(nodes)))
     table.add_row("Relaties", str(len(data.relationships)), end_section=True)
